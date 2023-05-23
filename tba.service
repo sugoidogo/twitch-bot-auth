@@ -1,0 +1,12 @@
+[Unit]
+Description=Twitch Bot Authorization
+Wants=network-online.target
+Requires=network-online.target
+
+[Service]
+WorkingDirectory=/opt/twitch-bot-auth
+ExecStart=/usr/bin/env python3 tba.py
+Type=notify
+
+[Install]
+WantedBy=default.target
