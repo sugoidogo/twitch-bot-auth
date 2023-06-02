@@ -5,7 +5,7 @@ export function request_auth(client_id,scope,redirect_uri=location.origin+locati
         response_type:'code',
         scope:scope
     })
-    if(window.confirm('redirecting you to twitch for authorization')){
+    if(window.confirm((document.title||location.origin+location.pathname)+' redirecting you to twitch for authorization')){
         location.assign(url.href+'&redirect_uri='+redirect_uri)
     }
 }
@@ -24,6 +24,13 @@ export function fetch_tokens(client_id,code,redirect_uri=location.origin+locatio
     })
     return fetch(url.href)
     .then(response=>response.json())
+}
+
+export function get_headers(tokens){
+    return {
+        'Authorization':'Bearer '+tokens.access_token,
+        'Client-ID':tokens.client_id
+    }
 }
 
 export function validate_tokens(tokens){
@@ -50,8 +57,8 @@ export function get_local_tokens(client_id){
     return JSON.parse(localStorage.getItem(client_id))
 }
 
-export function refresh_tokens(refresh_token){
-    const url=new URL('/',import.meta.url)
+export function refresh_tokens(client_id,refresh_token){
+    const url=new URL('/oauth2/token',import.meta.url)
     url.search=new URLSearchParams({
         client_id:client_id,
         grant_type:'refresh_token',
@@ -60,22 +67,33 @@ export function refresh_tokens(refresh_token){
     return fetch(url.href).then(response=>response.json())
 }
 
-export default function get_tokens(client_id,scope,redirect_uri=location.origin+location.pathname){
-    let tokens=get_local_tokens(client_id)||get_url_params()
-    if('access_token' in tokens){
-        return validate_tokens(tokens)
-        .catch((error)=>{
-            console.warn(error)
-            refresh_tokens(tokens.refresh_token)
-        })
-        .then(validate_tokens)
-        .then(tokens=>set_local_tokens(client_id,tokens))
-    }
-    return fetch_tokens(client_id,tokens.code,redirect_uri)
-    .then(validate_tokens)
-    .then(tokens=>set_local_tokens(client_id,tokens))
-    .catch((error)=>{
-            console.warn(error)
-            request_auth(client_id,scope,redirect_uri)
-        })    
+export function set_refresh_timeout(client_id,tokens){
+    return setTimeout(()=>{
+        get_tokens(client_id)
+        .then(new_tokens=>Object.assign(tokens,new_tokens))
+    },tokens.expires_in*1000)
 }
+
+export async function get_tokens(client_id,scope=null,redirect_uri=location.origin+location.pathname){
+    let tokens=get_local_tokens(client_id)||get_url_params()
+    if('code' in tokens){
+        tokens=await fetch_tokens(client_id,tokens.code,redirect_uri)
+    }
+    return refresh_tokens(client_id,tokens.refresh_token)
+    .then(validate_tokens)
+    .then(tokens=>{
+        tokens.auth_headers=get_headers(tokens)
+        set_refresh_timeout(client_id,tokens)
+        return set_local_tokens(client_id,tokens)
+    })
+    .catch((error)=>{
+            if(scope){
+                request_auth(client_id,scope,redirect_uri)
+            }else{
+                alert((document.title||location.origin+location.pathname)+' has been logged out of your twitch account')
+            }
+            throw error
+        })
+}
+
+export default get_tokens
