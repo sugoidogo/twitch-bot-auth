@@ -1,3 +1,12 @@
+
+/** @param {Response} response */
+async function validateResponse(response){
+    if(!response.ok){
+        throw new Error(response.code+' '+response.url+' '+await response.text())
+    }
+    return response
+}
+
 export function request_auth(client_id,scope,redirect_uri=location.origin+location.pathname){
     const url=new URL('https://id.twitch.tv/oauth2/authorize')
     url.search=new URLSearchParams({
@@ -23,6 +32,7 @@ export function fetch_tokens(client_id,code,redirect_uri=location.origin+locatio
         redirect_uri:redirect_uri
     })
     return fetch(url.href)
+    .then(validateResponse)
     .then(response=>response.json())
 }
 
@@ -37,7 +47,8 @@ export function validate_tokens(tokens){
     const url=new URL('/',import.meta.url)
     return fetch(url,{headers:{
         'Authorization':'OAuth '+tokens.access_token
-    }}).then(response=>response.json())
+    }}).then(validateResponse)
+    .then(response=>response.json())
     .then(validation=>{
         if('message' in validation){
             throw new Error(validation.message)
@@ -64,7 +75,9 @@ export function refresh_tokens(client_id,refresh_token){
         grant_type:'refresh_token',
         refresh_token:refresh_token
     })
-    return fetch(url.href).then(response=>response.json())
+    return fetch(url.href)
+    .then(validateResponse)
+    .then(response=>response.json())
 }
 
 export function set_refresh_timeout(client_id,tokens){
