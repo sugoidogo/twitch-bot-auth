@@ -4,9 +4,11 @@ Wants=network-online.target
 Requires=network-online.target
 
 [Service]
+User=1000
+ExecStartPre=pip install -r requirements.txt
 WorkingDirectory=/opt/twitch-bot-auth
 ExecStart=/usr/bin/env python3 tba.py
-Type=notify
+Type=exec
 
 [Install]
 WantedBy=default.target
