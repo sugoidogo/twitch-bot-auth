@@ -87,10 +87,14 @@ export function set_refresh_timeout(client_id,tokens){
     },tokens.expires_in*1000)
 }
 
-export async function get_tokens(client_id,scope=null,redirect_uri=location.origin+location.pathname){
+export async function get_tokens(client_id,scope=null,redirect_uri=location.origin+location.pathname,auth_return=false){
     let tokens=get_local_tokens(client_id)||get_url_params()
     if('code' in tokens){
         tokens=await fetch_tokens(client_id,tokens.code,redirect_uri)
+        .catch((error)=>console.warn(error))
+    }
+    if(!tokens){
+        tokens={refresh_token:undefined}
     }
     return refresh_tokens(client_id,tokens.refresh_token)
     .then(validate_tokens)
@@ -104,6 +108,7 @@ export async function get_tokens(client_id,scope=null,redirect_uri=location.orig
                 request_auth(client_id,scope,redirect_uri)
             }else{
                 alert((document.title||location.origin+location.pathname)+' has been logged out of your twitch account')
+                localStorage.clear(client_id)
             }
             throw error
         })
