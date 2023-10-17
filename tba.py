@@ -157,7 +157,7 @@ def validate(authorization):
     return json.loads(response.read().decode())
 
 def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple[str,int,dict]:
-    print(method+' '+path)
+    global config
     if(method=='OPTIONS'):
         return '',204,{
             'Access-Control-Allow-Headers':'authorization,client-id',
