@@ -1,22 +1,67 @@
 from os import environ
-configPath=environ.get('TBA_CONFIG_PATH','tba.ini')
-print('configPath =',configPath)
-from configparser import ConfigParser
-config=ConfigParser()
-config['api']={
-    'AuthURL':'https://id.twitch.tv/oauth2/validate',
-    'client_id':'',
-    'client_secret':'',
-    'redirect_uri':''
+sqldb=environ.get('SQLDB') or 'tba.db' # is there a standard for this environment variable?
+
+if sqldb.endswith('.db'):
+    import sqlite3 as sql
+else:
+    import pyodbc as sql
+
+sql_connection=sql.connect(sqldb)
+sql_cursor=sql_connection.cursor()
+
+read_config=lambda:dict(sql_cursor.execute('select * from config').fetchall())
+
+try:
+    config=read_config()
+except sql.OperationalError:
+    sql_cursor.execute('create table config(key,value)')
+    sql_cursor.execute('''insert into config values
+        ('AuthURL','https://id.twitch.tv/oauth2/validate'),
+        ('client_id',''),
+        ('client_secret',''),
+        ('redirect_uri','')
+    ''')
+    sql_connection.commit()
+    config=read_config()
+
+print(config)
+
+def read_rules():
+    allow=sql_cursor.execute('select header,value from rules where allow is true').fetchall()
+    deny=sql_cursor.execute('select header,value from rules where allow is false').fetchall()
+    return (deny,allow)
+
+try:
+    rules=read_rules()
+except sql.OperationalError:
+    sql_cursor.execute('create table rules(header,value,allow)')
+    sql_cursor.execute('''insert into rules values
+        ('client_id','.*',true),
+        ('user_id','.*',true)
+    ''')
+    sql_connection.commit()
+    rules=read_rules()
+
+print(rules)
+
+read_secrets=lambda:dict(sql_cursor.execute('select * from secrets').fetchall())
+
+try:
+    secrets=read_secrets()
+except sql.OperationalError:
+    sql_cursor.execute('create table secrets(client_id,client_secret)')
+    sql_cursor.execute('''insert into secrets values ('exampleid','examplesecret')''')
+    sql_connection.commit()
+    secrets=read_secrets()
+
+print(secrets)
+
+config={
+    'api':config,
+    'secrets':secrets,
+    'deny':dict(rules[0]),
+    'allow':dict(rules[1])
 }
-config['DENY']={}
-config['ALLOW']={
-    'client_id':'.*',
-    'user_id':'.*'
-}
-config['secrets']={}
-config.read(configPath)
-config.write(open(configPath,'w'))
 
 import json,re
 from urllib.parse import urlencode,parse_qsl,urlparse
