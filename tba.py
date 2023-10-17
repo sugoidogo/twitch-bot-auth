@@ -150,6 +150,12 @@ def get_sub(user_id):
         refresh_tokens()
         return get_sub(user_id)
 
+def validate(authorization):
+    response=urlopen(Request(config['NETWORK']['AuthURL'],headers={
+        'Authorization':authorization
+    }))
+    return json.loads(response.read().decode())
+
 def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple[str,int,dict]:
     print(method+' '+path)
     if(method=='OPTIONS'):
@@ -199,10 +205,7 @@ def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple
                         'content-type':'text/plain'
                     }
                 authorization=headers.get('authorization')
-                response=urlopen(Request(config['NETWORK']['AuthURL'],headers={
-                    'Authorization':authorization
-                }))
-                response=json.loads(response.read().decode())
+                response=validate(authorization)
                 if('access_token' in config['api']):
                     response['tier']=get_sub(response['user_id'])
                 status=None
