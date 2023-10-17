@@ -111,7 +111,7 @@ def refresh_tokens():
         response=json.loads(urlopen(request).read().decode())
         config['api']['access_token']=response['access_token']
         config['api']['refresh_token']=response['refresh_token']
-        config.write(open(configPath,'w'))
+        write_config()
     except HTTPError as error:
         request_auth()
         raise error
@@ -159,6 +159,34 @@ def validate(authorization):
     }))
     return json.loads(response.read().decode())
 
+def write_config():
+    sql_cursor.execute('begin transaction')
+    try:
+        sql_cursor.executescript(f'''delete * from config;
+            insert into config values
+                ('AuthURL','{config['api']['AuthURL']}'),
+                ('client_id','{config['api']['client_id']}'),
+                ('client_secret','{config['api']['client_secret']}'),
+                ('redirect_uri','{config['api']['redirect_uri']}');
+        ''')
+        if 'broadcaster_id' in config['api']:
+            sql_cursor.execute(f'''insert into config values ('broadcaster_id','{config['api']['broadcaster_id']})''')
+        if 'refresh_token' in config['api']:
+            sql_cursor.execute(f'''insert into config values ('refresh_token','{config['api']['refresh_token']})''')
+        if 'access_token' in config['api']:
+            sql_cursor.execute(f'''insert into config values ('access_token','{config['api']['access_token']})''')
+        sql_cursor.execute('delete * from rules')
+        for header,value in config['deny'].items():
+            sql_cursor.execute(f'''insert into rules values ('{header}','{value}',false)''')
+        for header,value in config['allow'].items():
+            sql_cursor.execute(f'''insert into rules values ('{header}','{value}',true)''')
+        sql_cursor.execute('delete * from secrets')
+        for client_id,secret in config['secrets'].items():
+            sql_cursor.execute(f'''insert into secrets values ('{client_id}','{secret}')''')
+        sql_cursor.execute('commit')
+    except:
+        sql_cursor.execute('rollback')
+
 def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple[str,int,dict]:
     global config
     if(method=='OPTIONS'):
@@ -176,7 +204,7 @@ def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple
             if path.startswith('/code'):
                 get_tokens(params['code'])
                 get_broadcaster_id()
-                config.write(open(configPath,'w'))
+                write_config()
                 script='<script>window.close()</script>'
                 return script,200,{
                     'content-type':'text/html'
