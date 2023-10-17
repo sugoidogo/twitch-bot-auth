@@ -18,11 +18,10 @@ config['secrets']={}
 config.read(configPath)
 config.write(open(configPath,'w'))
 
-from urllib.request import Request, urlopen
-from urllib.error import URLError
 import json,re
 from urllib.parse import urlencode,parse_qsl,urlparse
 from urllib.request import Request,urlopen,HTTPError
+from urllib.error import URLError
 
 def get_broadcaster_id():
     headers={
