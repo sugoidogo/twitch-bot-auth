@@ -254,6 +254,28 @@ def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple
                         if re.compile(pattern).match(response[keyword]):
                             return json.dumps(response),204,response.items()
                 return json.dumps(response),403,response.items()
+            if path.startswith('/config.html'):
+                with open('config.html','r') as file:
+                    config_page=file.read()
+                return config_page,200,{
+                    'content-type':'text/html',
+                }
+            if path.startswith('/config'):
+                if 'broadcaster_id' in config['api']:
+                    if 'authorization' not in headers:
+                        return 'authorization not in headers',401,{
+                            'content-type':'text/plain'
+                        }
+                    if validate(headers['authorization'])['user_id']!=config['api']['broadcaster_id']:
+                        return '',403,{}
+                if method=='GET':
+                    return json.dumps(config),200,{
+                        'content-type':'text/json'
+                    }
+                if method=='POST':
+                    config=json.loads(body)
+                    write_config()
+                    return '',204,{}
             return '',404,{}
         except URLError as response:
             error=response.read().decode()
