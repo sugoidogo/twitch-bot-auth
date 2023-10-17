@@ -3,10 +3,6 @@ configPath=environ.get('TBA_CONFIG_PATH','tba.ini')
 print('configPath =',configPath)
 from configparser import ConfigParser
 config=ConfigParser()
-config['NETWORK']={
-    'IP':'localhost',
-    'Port':5000,
-}
 config['api']={
     'AuthURL':'https://id.twitch.tv/oauth2/validate',
     'client_id':'',
@@ -19,20 +15,11 @@ config['ALLOW']={
     'user_id':'.*'
 }
 config['secrets']={}
-config['LOG']={
-    'authorization':False,
-    'response':True,
-    'status':True
-}
 config.read(configPath)
 config.write(open(configPath,'w'))
-print('config loaded, initializing server')
 
-from advancedhttpserver import AdvancedHTTPServer, RequestHandler
 from urllib.request import Request, urlopen
 from urllib.error import URLError
-from threading import Thread
-from traceback import print_exc
 import json,re
 from urllib.parse import urlencode,parse_qsl,urlparse
 from urllib.request import Request,urlopen,HTTPError
@@ -119,125 +106,86 @@ def get_sub(user_id):
         refresh_tokens()
         return get_sub(user_id)
 
-class TBA(RequestHandler):
-    def do_GET(self):
-        print(self.requestline)
-        response=None
+def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple[str,int,dict]:
+    print(method+' '+path)
+    if(method=='OPTIONS'):
+        return '',204,{
+            'Access-Control-Allow-Headers':'authorization,client-id',
+        }
+    if(method=='GET'):
         try:
-            if self.path.startswith('/tba.mjs'):
-                tba=open('tba.mjs','rb').read()
-                self.send_response(200)
-                self.send_header('content-type','text/javascript')
-                self.send_header('content-length',len(tba))
-                self.end_headers()
-                return self.wfile.write(tba)
-            if self.path.startswith('/code'):
-                query=dict(parse_qsl(urlparse(self.path).query))
-                self.send_response(200)
-                self.end_headers()
-                get_tokens(query['code'])
+            if path.startswith('/tba.mjs'):
+                tba=open('tba.mjs','r').read()
+                return open('tba.mjs','r').read(),200,{
+                    'content-type':'text/javascript',
+                }
+            if path.startswith('/code'):
+                get_tokens(params['code'])
                 get_broadcaster_id()
-                return config.write(open(configPath,'w'))
-            if(self.path.startswith('/oauth2/token')):
-                query=urlparse(self.path).query
-                query_dict=dict(parse_qsl(query))
-                if 'client_id' not in query_dict:
-                    self.send_error(401)
-                    return
-                client_id=query_dict['client_id']
+                config.write(open(configPath,'w'))
+                script='<script>window.close()</script>'
+                return script,200,{
+                    'content-type':'text/html'
+                }
+            if path.startswith('/oauth2/token'):
+                if 'client_id' not in params:
+                    error='client_id not in params'
+                    return error,401,{
+                        'content-type':'text/plain'
+                    }
+                client_id=params['client_id']
                 if client_id not in config['secrets']:
-                    self.send_error(403)
-                    return
+                    error='client_id not in config secrets'
+                    return error,403,{
+                        'content-type':'text/plain'
+                    }
                 client_secret=config['secrets'][client_id]
-                query+='&client_secret='+client_secret
+                params['client_secret']=client_secret
+                query='?'
+                for key,val in params.items():
+                    query+=key+'='+val+'&'
                 request=Request('https://id.twitch.tv/oauth2/token',query.encode(),method='POST')
                 response=urlopen(request)
-                body=response.read()
-                self.send_response(response.code)
-                self.send_header('content-length', len(body))
-                self.end_headers()
-                response=None
-                return self.wfile.write(body)
-            if 'authorization' not in self.headers:
-                return self.send_error(401,explain='missing authorization header')
-            authorization=self.headers.get('authorization')
-            response=urlopen(Request(config['NETWORK']['AuthURL'],headers={
-                'Authorization':authorization
-            }))
-        except URLError as error:
-            response=error
+                body=response.read().decode()
+                return body,response.code,response.headers
+            if path.startswith('/oauth2/validate'):
+                if 'authorization' not in headers:
+                    error='authorization not in headers'
+                    return error,401,{
+                        'content-type':'text/plain'
+                    }
+                authorization=headers.get('authorization')
+                response=urlopen(Request(config['NETWORK']['AuthURL'],headers={
+                    'Authorization':authorization
+                }))
+                response=json.loads(response.read().decode())
+                if('access_token' in config['api']):
+                    response['tier']=get_sub(response['user_id'])
+                status=None
+                for keyword, pattern in config['DENY'].items():
+                    if(status!=None):
+                        break
+                    if keyword in response:
+                        if re.compile(pattern).match(response[keyword]):
+                            return json.dumps(response),403,response.items()
+                for keyword, pattern in config['ALLOW'].items():
+                    if(status!=None):
+                        break
+                    if keyword in response:
+                        if re.compile(pattern).match(response[keyword]):
+                            return json.dumps(response),204,response.items()
+                return json.dumps(response),403,response.items()
+            return '',404,{}
+        except URLError as response:
+            error=response.read().decode()
+            return error,response.code,response.headers
         except Exception as exception:
-            self.send_error(500,str(exception))
-            print_exc()
-            return
-        finally:
-                try:
-                    if(response==None):
-                        return
-                    if(response.code>=400):
-                        self.send_error(response.code)
-                        print(authorization,response.read().decode())
-                    else:
-                        response=json.loads(response.read().decode())
-                        if('access_token' in config['api']):
-                            response['tier']=get_sub(response['user_id'])
-                        status=None
-                        for keyword, pattern in config['DENY'].items():
-                            if(status!=None):
-                                break
-                            if keyword in response:
-                                if re.compile(pattern).match(response[keyword]):
-                                    self.send_error(403)
-                                    status='DENY '+keyword+' '+pattern
-                                    break
-                        for keyword, pattern in config['ALLOW'].items():
-                            if(status!=None):
-                                break
-                            if keyword in response:
-                                if re.compile(pattern).match(response[keyword]):
-                                    self.send_response(200)
-                                    status='ALLOW '+keyword+' '+pattern
-                                    break
-                        if(status==None):
-                            self.send_error(403)
-                            status='no matching ALLOW pattern'
-                        for keyword, value in response.items():
-                            self.send_header(keyword, value)
-                        response=json.dumps(response).encode()
-                        self.send_header('content-length',len(response))
-                        self.end_headers()
-                        self.wfile.write(response)
-                        log=[]
-                        if(config['LOG'].getboolean('authorization')):
-                            log.append(authorization)
-                        if(config['LOG'].getboolean('response')):
-                            log.append(response)
-                        if(config['LOG'].getboolean('status')):
-                            log.append(status)
-                        print(log)
-                except Exception as exception:
-                    self.send_error(500,str(exception))
-                    print_exc()
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header('Access-Control-Allow-Headers', 'authorization,client-id')
-        self.end_headers()
-    def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin','*')
-        super().end_headers()
+            from traceback import format_exc
+            error=format_exc()
+            return error,500,{
+                'content-type':'text/plain'
+            }
 
-server=AdvancedHTTPServer(TBA,(config['NETWORK']['IP'],int(config['NETWORK']['Port'])))
-server=Thread(target=server.serve_forever)
-server.start()
-
-try:
-    from subprocess import run
-    print('startup complete, attempting systemd-notify')
-    run(['systemd-notify','--ready'])
-    if('access_token' not in config['api']):
-        request_auth()
-except Exception as e:
-    print_exc()
-finally:
-    print('awaiting requests')
-    server.join()
+if __name__ == '__main__':
+    import httpserverless
+    httpserverless.start_server(request_handler)

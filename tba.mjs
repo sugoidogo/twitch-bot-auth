@@ -44,7 +44,7 @@ export function get_headers(tokens){
 }
 
 export function validate_tokens(tokens){
-    const url=new URL('/',import.meta.url)
+    const url=new URL('/oauth2/validate',import.meta.url)
     return fetch(url,{headers:{
         'Authorization':'OAuth '+tokens.access_token
     }}).then(validateResponse)
