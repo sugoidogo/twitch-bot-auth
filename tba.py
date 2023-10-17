@@ -168,8 +168,9 @@ def request_handler(method='GET',path='/',params={},headers={},body='') -> tuple
     if(method=='GET'):
         try:
             if path.startswith('/tba.mjs'):
-                tba=open('tba.mjs','r').read()
-                return open('tba.mjs','r').read(),200,{
+                with open('tba.mjs','r') as tba_script:
+                    tba=tba_script.read()
+                return tba,200,{
                     'content-type':'text/javascript',
                 }
             if path.startswith('/code'):
