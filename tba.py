@@ -76,6 +76,9 @@ def get_broadcaster_id():
     url='https://api.twitch.tv/helix/users'
     request=Request(url,headers=headers)
     response=json.loads(urlopen(request).read().decode())
+    if 'broadcaster_id' in config['api'] and config['api']['broadcaster_id']!=response['data'][0]['id']:
+        config['api']=read_config()
+        return
     config['api']['broadcaster_id']=response['data'][0]['id']
 
 def request_auth():
