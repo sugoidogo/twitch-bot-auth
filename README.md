@@ -1,2 +1,1 @@
-# Twitch Bot Auth
-Authentication service used by Sugoi Susware
+this repo has moved to https://gitea.sugoidogo.com/sugoidogo/twitch-cloud-ebs
